@@ -9,14 +9,13 @@ import torch.optim as optim
 
 
 class BaseLearner:
-    def __init__(self, env_name, is_render=True, time=100, episode=10):
+    def __init__(self, env_name, is_render=True, episode=10):
         if is_render:
             self.env = gym.make(env_name, render_mode='human')
         
         else :
             self.env = gym.make(env_name)
 
-        self.time = time
         self.episode = episode
 
 
@@ -24,27 +23,28 @@ class BaseLearner:
         for i in range(self.episode):
             obs, info = self.env.reset()
 
-            for _ in range(self.time):
+            while True:
                 action = self.env.action_space.sample()
                 obs, reward, terminated, truncated, info = self.env.step(action)
 
                 if terminated or truncated:
-                    obs, info = self.env.reset()
+                    break
 
-            self.env.close()
+        self.env.close()
 
 
 
 class TDLearner(BaseLearner):
-    def __init__(self, env_name, is_render=True, sample=100, time=999, episode=100, lr=1e-4):
-        super().__init__(env_name, is_render, time, episode)
+    def __init__(self, env_name, is_render=True, sample=100, episode=100, lr=1e-4):
+        super().__init__(env_name, is_render, episode)
         
         self.samples = sample
-        # self.batch = batch
         
         self.Qnet = StateActionValueNet(action_dim=1, state_dim=2)
         self.loss_fn = nn.MSELoss()
         self.optimizer = optim.Adam(self.Qnet.parameters(), lr=lr)
+        
+        # self.trace = [torch.zeros_like(param) for param in self.Qnet.parameters()]
 
 
     def optimize(self, state_action, value):    
@@ -58,9 +58,24 @@ class TDLearner(BaseLearner):
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        
+        
+    def trace_update(self):
+        self.Qnet.eval()
+        
+        theta = 0
+        with torch.no_grad():
+            for param in self.Qnet.parameters():
+                grad = param.grad
+                
+                theta += (grad*param).sum()
+        
+        return theta
 
 
-    def q_learn(self, gamma=0.8, forget=0.2):
+    def q_learn(self, gamma=0.8, forget=0.2, lamb=0.9):
+        eligibility = 0
+        
         for j in range(self.episode):
             current_state, _ = self.env.reset()
             
@@ -72,9 +87,11 @@ class TDLearner(BaseLearner):
                 next_q_est, _, next_state_action  = self.epsilon_greedy(next_state, eps=0.)
                 R += reward
 
-                q_value = current_q_est + forget*(reward + gamma*next_q_est - current_q_est)
+                delta = reward + gamma*next_q_est - current_q_est
+                q_value = current_q_est + forget*delta*eligibility
                 
                 self.optimize(current_state_action, q_value)
+                eligibility = eligibility*gamma*lamb + self.trace_update()
                 
                 if terminated or truncated:
                     self.optimize(next_state_action, torch.FloatTensor([0.])) # Q value of the terminal state is 0
@@ -88,21 +105,25 @@ class TDLearner(BaseLearner):
         self.env.close()
 
 
-    def sarsa_learn(self, gamma=0.8, forget=0.2):
+    def sarsa_learn(self, gamma=0.8, forget=0.2, lamb=0.9):
+        eligibility = 0
+        
         for j in range(self.episode):
             current_state, _ = self.env.reset()
             current_q_est, current_action, current_state_action = self.epsilon_greedy(current_state)
 
             R = 0
-
+            
             while True:                                     
                 next_state, reward, terminated, truncated, _ = self.env.step(current_action)
                 next_q_est, next_action, next_state_action  = self.epsilon_greedy(next_state)
                 R += reward
-
-                q_value = current_q_est + forget*(reward + gamma*next_q_est - current_q_est)
+                
+                delta = reward + gamma*next_q_est - current_q_est
+                q_value = current_q_est + forget*delta*eligibility
                 
                 self.optimize(current_state_action, q_value)
+                eligibility = eligibility*gamma*lamb + self.trace_update()
                 
                 if terminated or truncated:
                     self.optimize(next_state_action, torch.FloatTensor([0.])) # Q value of the terminal state is 0
@@ -175,7 +196,5 @@ if __name__=='__main__':
     episode = 1000
 
     agent = TDLearner(env_name=env_name, episode=episode)
-    # agent.sarsa_learn()
-    agent.q_learn()
-
-    
+    agent.sarsa_learn()
+    # agent.q_learn()
