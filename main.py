@@ -1,18 +1,21 @@
-import numpy as np
 import gymnasium as gym
 
 
-env = gym.make('MountainCarContinuous-v0', render_mode='human')
+
+
+
+# Create the environment without specifying the render mode
+env = gym.make("HalfCheetah-v5", render_mode='human', width=800, height=800)
+
+# Reset the environment to start
 observation, info = env.reset()
 
-for _ in range(100):
-    action = env.action_space.sample()  # agent policy that uses the observation and info
-    observation, reward, terminated, truncated, info = env.step(np.array([5.]))
+# Render and run the environment using mujoco-py
+for _ in range(1000):
+    action = env.action_space.sample()  # Sample random actions
+    observation, reward, done, truncated, info = env.step(action)
 
-    print(action, observation, reward, terminated, truncated, info)
-    
-    if terminated or truncated:
+    if done or truncated:
         observation, info = env.reset()
 
-        env.close()
-
+env.close()
