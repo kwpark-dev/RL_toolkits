@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.distributions.multivariate_normal import MultivariateNormal
 
-from apprx import fc_apprx
+# from apprx import fc_apprx
 
 
 
@@ -40,20 +40,20 @@ class StochasticActor(nn.Module):
     
     
     
-if __name__ == "__main__":
+# if __name__ == "__main__":
     # A = torch.rand(5, 5)
     # L = torch.tril(A)
     # cov = L@L.T
     
     # pi = MultivariateNormal(torch.rand(5), cov)
     # print(pi.sample((1, )))
-    state = torch.rand((5, 5))
-    action = torch.rand((5, 3))
-    N = 4
-    actor = StochasticActor(fc_apprx, 5, 3, N)
-    mvn = actor.dist(state)
-    print(mvn.batch_shape, mvn.event_shape)
-    print(mvn.loc, mvn.covariance_matrix)
+    # state = torch.rand((5, 5))
+    # action = torch.rand((5, 3))
+    # N = 4
+    # actor = StochasticActor(fc_apprx, 5, 3, N)
+    # mvn = actor.dist(state)
+    # print(mvn.batch_shape, mvn.event_shape)
+    # print(mvn.loc, mvn.covariance_matrix)
     # policy, logp = actor(state, action)
     
     # print(policy, logp)

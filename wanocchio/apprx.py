@@ -12,9 +12,9 @@ def fc_apprx(in_dim, out_dim, N, end_act=nn.Sigmoid):
     
     end = [nn.Linear(64, out_dim),
            end_act()]
-    
+    # should think about layernorm for better training
     hidden = [nn.Linear(64, 64),
-              nn.BatchNorm1d(64),
+            #   nn.BatchNorm1d(64),
               nn.ReLU()]*N
     
     func = front + hidden + end
@@ -37,10 +37,10 @@ def custom_apprx(config):
 
 
 
-if __name__ == '__main__':
-    data = torch.rand(3, 10)
+# if __name__ == '__main__':
+#     data = torch.rand(3, 10)
     
-    func = fc_apprx(10, 5, 3)
+#     func = fc_apprx(10, 5, 3)
     
-    res = func(data)
-    print(res.shape)
+#     res = func(data)
+#     print(res.shape)
