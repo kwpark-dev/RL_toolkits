@@ -39,6 +39,14 @@ class StochasticActor(nn.Module):
         return pi, logp
     
     
+    def train(self):
+        self.mean.train()
+        
+        
+    def eval(self):
+        self.mean.eval()
+    
+    
     
 # if __name__ == "__main__":
     # A = torch.rand(5, 5)

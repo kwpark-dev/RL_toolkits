@@ -6,7 +6,6 @@ import torch.nn as nn
 def fc_apprx(in_dim, out_dim, N, end_act=nn.Sigmoid):
     # pre-defined fc layer architecture
     # make sure that the number of data points is more than 1 (batchnorm)
-    
     front = [nn.Linear(in_dim, 64),
              nn.ReLU()]
     
@@ -14,11 +13,10 @@ def fc_apprx(in_dim, out_dim, N, end_act=nn.Sigmoid):
            end_act()]
     # should think about layernorm for better training
     hidden = [nn.Linear(64, 64),
-            #   nn.BatchNorm1d(64),
+              nn.BatchNorm1d(64),
               nn.ReLU()]*N
     
     func = front + hidden + end
-    
     
     return nn.Sequential(*func)
 

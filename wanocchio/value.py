@@ -8,8 +8,8 @@ import numpy as np
 class Crtic(nn.Module):
     def __init__(self, func_nn, state_dim, N):
         super().__init__()
-        # state-action value network
-        self.q_value = func_nn(state_dim, 1, N, nn.ReLU)
+        # state value network
+        self.q_value = func_nn(state_dim, 1, N, nn.Identity)
     
     
     def forward(self, state):

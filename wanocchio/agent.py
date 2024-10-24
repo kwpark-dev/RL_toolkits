@@ -51,8 +51,7 @@ class AgentPPO(AgentBase):
         
     def critic_loss(self, data):
         state, rewards_to_go = data['state'], data['rewards_to_go']
-        
-        v_loss = ((self.critic(state).squeeze(-1) - rewards_to_go)**2).mean()
+        v_loss = ((self.critic(state).squeeze() - rewards_to_go)**2).mean()
 
         return v_loss
     
@@ -71,6 +70,9 @@ class AgentPPO(AgentBase):
     
     
     def learn(self, last_value=None):
+        self.actor.train()
+        self.critic.train()
+        
         batch = self.buffer.fetch(last_value)
         
         for _ in range(self.epoch):
@@ -83,24 +85,31 @@ class AgentPPO(AgentBase):
             loss_v = self.critic_loss(batch)
             loss_v.backward()
             self.optimizer_critic.step()
+            
+        return loss_pi.item(), loss_v.item()
         
         
     def policy(self, state, deterministic=False):
-        state = torch.as_tensor(state, dtype=torch.float32)
         # note that separation btw train and eval mode is required if the model incldues 
         # special layers such as batch norm or layer norm.
+        self.actor.eval()
+        self.critic.eval()
+        
+        state = torch.as_tensor(state, dtype=torch.float32)
+        
         with torch.no_grad():
         
-            pi = self.actor.dist(state)
+            pi = self.actor.dist(state.unsqueeze(dim=0))
             if deterministic:
                 return pi.mean.numpy()
             
             else:
                 a = pi.sample()
             logp_a = pi.log_prob(a).sum(axis=-1)
-            v = self.critic(state)
+            
+            v = self.critic(state.unsqueeze(dim=0))
     
-        return a.numpy(), v.numpy(), logp_a.numpy()
+        return a.squeeze().numpy(), v.squeeze().numpy(), logp_a.squeeze().numpy()
     
     
     
