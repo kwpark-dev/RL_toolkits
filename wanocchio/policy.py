@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-from torch.distributions.multivariate_normal import MultivariateNormal
-
+from torch.distributions import Normal
 # from apprx import fc_apprx
 
 
@@ -18,18 +17,17 @@ class StochasticActor(nn.Module):
     def __init__(self, func_nn, state_dim, action_dim, N):
         super().__init__()
         # network for mean values of the N > 1 dim'l distribution
-        self.mean = func_nn(state_dim, action_dim, N)
-        # cov matrix for N > 1 dim'l distribution, should be positive def.
-        # init with cholesky factorization, LL^T
-        A = torch.rand(action_dim, action_dim)
-        L = torch.tril(A)
-        
-        self.cov = nn.Parameter(L@L.T)
+        # but multivariate Gaussian returns correlated sequences, which should be avoided
+        # so prepare network returning N * (mean, std) which are employed by N Gaussian distribution
+        self.dist_net = func_nn(state_dim, action_dim*2, N, nn.Identity)
+        # self.log_std = nn.Parameter(torch.rand(1, action_dim))
         
         
     def dist(self, state):
+        means, log_stds = self.dist_net(state).chunk(2, dim=1)
+        normal = Normal(means, log_stds.exp())
         
-        return MultivariateNormal(self.mean(state), self.cov)
+        return normal
     
     
     def forward(self, state, action):
@@ -40,28 +38,28 @@ class StochasticActor(nn.Module):
     
     
     def train(self):
-        self.mean.train()
+        self.dist_net.train()
         
         
     def eval(self):
-        self.mean.eval()
+        self.dist_net.eval()
     
     
     
 # if __name__ == "__main__":
-    # A = torch.rand(5, 5)
-    # L = torch.tril(A)
-    # cov = L@L.T
+    # actor = StochasticActor(fc_apprx, 10, 4, 4)
     
-    # pi = MultivariateNormal(torch.rand(5), cov)
-    # print(pi.sample((1, )))
-    # state = torch.rand((5, 5))
-    # action = torch.rand((5, 3))
-    # N = 4
-    # actor = StochasticActor(fc_apprx, 5, 3, N)
-    # mvn = actor.dist(state)
-    # print(mvn.batch_shape, mvn.event_shape)
-    # print(mvn.loc, mvn.covariance_matrix)
-    # policy, logp = actor(state, action)
+    # state = torch.randn(12, 10)
+    # action = torch.randn(12, 4)
     
-    # print(policy, logp)
+    # pi, logp = actor(state, action)
+    # print(pi.shape, logp.shape)
+#     means = torch.tensor([0.0, 2.0, -1.0])       # Mean for each distribution
+#     std_devs = torch.tensor([1.0, 0.5, 1.5])     # Standard deviation for each distribution
+
+#     # Create independent Normal distributions
+#     normal_dist = torch.distributions.Normal(means, std_devs)
+
+#     # Sample one value from each distribution
+#     samples = normal_dist.sample()
+#     print("Samples:", torch.tanh(samples))

@@ -60,7 +60,6 @@ class AgentPPO(AgentBase):
         state, action, advantage, logp_old = [
             data[k] for k in ('state', 'action', 'advantages', 'logp')
         ]
-        
         _, logp = self.actor(state, action)
         ratio = torch.exp(logp - logp_old)
         clip_adv = torch.clamp(ratio, 1-self.clip, 1+self.clip) * advantage
