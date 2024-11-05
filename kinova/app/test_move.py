@@ -83,10 +83,26 @@ def example_move_to_home_position(base):
 
 
 def initialize_position(base):
+    # Make sure the arm is in Single Level Servoing mode
+    base_servo_mode = Base_pb2.ServoingModeInformation()
+    base_servo_mode.servoing_mode = Base_pb2.SINGLE_LEVEL_SERVOING
+    base.SetServoingMode(base_servo_mode)
+
     # cartesian action movement, end_effector control
-    print("Initialize Observation")
+    print("Initialize Position: Gripper")
+    gripper_command = Base_pb2.GripperCommand()
+    finger = gripper_command.gripper.finger.add()
+
+    gripper_command.mode = Base_pb2.GRIPPER_POSITION
+    finger.finger_identifier = 1
+    finger.value = 0.
+    
+    base.SendGripperCommand(gripper_command)
+    time.sleep(1)
+    
+    print("Initialize Position: Joints")
     action = Base_pb2.Action()
-    action.name = "Searching Actions"
+    action.name = "Initial Pose"
     action.application_data = ""
 
     pose = action.reach_pose.target_pose
@@ -113,7 +129,7 @@ def initialize_position(base):
     base.Unsubscribe(notification_handle)
 
     if finished:
-        print("Cartesian movement completed")
+        print("Initializtion Completed")
     else:
         print("Timeout on action notification wait")
     return finished
@@ -196,6 +212,37 @@ def example_cartesian_action_movement(base, base_cyclic):
         print("Timeout on action notification wait")
     return finished
 
+
+def gripper_movement(base):
+
+    gripper_command = Base_pb2.GripperCommand()
+    finger = gripper_command.gripper.finger.add()
+
+    gripper_command.mode = Base_pb2.GRIPPER_POSITION
+    finger.finger_identifier = 1
+    finger.value = 0.
+    
+    #e = threading.Event()
+    #notification_handle = base.OnNotificationActionTopic(
+    #    check_for_end_or_abort(e),
+    #    Base_pb2.NotificationOptions()
+    #)
+
+    print("Gripper moves to {}".format(finger.value))
+    base.SendGripperCommand(gripper_command)
+    print(gripper_command)
+    #finished = e.wait(TIMEOUT_DURATION)
+    #base.Unsubscribe(notification_handle)
+    time.sleep(1)
+    #if finished:
+    #    print("Gripper done")
+    #else:
+    #    print("Timeout")
+
+    #return finished
+    return 0
+
+
 def main():
     
     # Import the utilities helper module
@@ -210,21 +257,12 @@ def main():
 
         # Create required services
         base = BaseClient(router)
-        base_cyclic = BaseCyclicClient(router)
-
-        # Example core
+        
         success = True
-
-        success &= example_move_to_home_position(base)
         success &= initialize_position(base)
-        #success &= example_move_to_home_position(base)
-        #success &= example_cartesian_action_movement(base, base_cyclic)
-        #success &= example_angular_action_movement(base)
-
-        # You can also refer to the 110-Waypoints examples if you want to execute
-        # a trajectory defined by a series of waypoints in joint space or in Cartesian space
-
+        
         return 0 if success else 1
+
 
 if __name__ == "__main__":
     exit(main())
