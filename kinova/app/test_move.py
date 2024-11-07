@@ -23,11 +23,29 @@ import threading
 
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
-
 from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2
 
+from enum import Enum
+import numpy as np
 # Maximum allowed waiting time during actions (in seconds)
 TIMEOUT_DURATION = 20
+
+
+class PoseSafety(Enum):
+    XMIN = 30
+    XMX = 70
+    YMIN = -20
+    YMAX = 20
+    ZMIN = 4
+    ZMAX = 54
+
+    THETAXMIN = 60
+    THETAXMAX = 180
+    THETAYMIN = -60
+    THETAYMAX = 60
+    THETAZMIN = 60
+    THETAZMAX = 120
+
 
 # Create closure to set an event after an END or an ABORT
 def check_for_end_or_abort(e):
@@ -97,6 +115,7 @@ def initialize_position(base):
     finger.finger_identifier = 1
     finger.value = 0.
     
+    print(gripper_command) 
     base.SendGripperCommand(gripper_command)
     time.sleep(1)
     
@@ -106,9 +125,9 @@ def initialize_position(base):
     action.application_data = ""
 
     pose = action.reach_pose.target_pose
-    pose.x = 0.388
-    pose.y = 0.001
-    pose.z = 0.278
+    pose.x = 0.420
+    pose.y = 0.000
+    pose.z = 0.455
     pose.theta_x = 178.8
     pose.theta_y = 0
     pose.theta_z = 90
@@ -165,6 +184,35 @@ def example_angular_action_movement(base):
 
     if finished:
         print("Angular movement completed")
+    else:
+        print("Timeout on action notification wait")
+    return finished
+
+
+def sequential_movement(base, move):
+    print("Starting sequentail movement")
+    action = Base_pb2.Action()
+    action.name = "grasp the target"
+    action.application_data = ""
+
+    pose = action.reach_pose.target_pose
+    pose.x, pose.y, pose.z, pose.theta_x, pose.theta_y, pose.theta_z = move
+
+    e = threading.Event()
+    notification_handle = base.OnNotificationActionTopic(
+        check_for_end_or_abort(e),
+        Base_pb2.NotificationOptions()
+    )
+
+    print("Executing action")
+    base.ExecuteAction(action)
+    print(action)
+    print("Waiting for movement to finish ...")
+    finished = e.wait(TIMEOUT_DURATION)
+    base.Unsubscribe(notification_handle)
+
+    if finished:
+        print("Cartesian movement completed")
     else:
         print("Timeout on action notification wait")
     return finished
@@ -258,9 +306,28 @@ def main():
         # Create required services
         base = BaseClient(router)
         
+        step = 0
         success = True
+
+        mini = np.array([0.30, -0.20, 0.04, 60, -60, 60])
+        maxi = np.array([0.70, 0.2,0.54, 180, 60, 120])
+        interval = maxi - mini
+
         success &= initialize_position(base)
         
+        while True:
+            move = np.random.rand(6)*interval + mini
+            success &= sequential_movement(base, move)
+            
+            if step > 2:
+                print("Episode is done")
+                success &= example_move_to_home_position(base)
+
+                break
+
+            step += 1
+
+
         return 0 if success else 1
 
 
