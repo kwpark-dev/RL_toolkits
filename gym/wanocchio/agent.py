@@ -1,11 +1,6 @@
 import torch
-# import torch.nn as nn
 import torch.optim as optim
 
-# from buffer import RolloutBuffer
-# from policy import StochasticActor
-# from value import Crtic
-# from apprx import fc_apprx
 
 
 class AgentBase:
@@ -112,11 +107,4 @@ class AgentPPO(AgentBase):
     
     
     
-# if __name__ == "__main__":
-#     config = {'buffer':RolloutBuffer, 'buffer_size':10,
-#               'apprx':fc_apprx, 
-#               'actor':StochasticActor, 'actor_layer': 6, 'actor_lr':1e-3,
-#               'critic':Crtic, 'critic_layer':4, 'critic_lr':1e-3, 
-#               'epoch':4, 'clip':0.1}
-    
-#     agent = AgentPPO(4, 4, config)
+

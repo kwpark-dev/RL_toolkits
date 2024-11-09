@@ -12,6 +12,7 @@
 #
 ###
 
+# Old collections usage
 import collections.abc
 collections.MutableMapping = collections.abc.MutableMapping
 collections.MutableSequence = collections.abc.MutableSequence
@@ -25,11 +26,11 @@ from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
 from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2
 
-from enum import Enum
-
 import numpy as np
 import ffmpeg
 import cv2
+
+
 
 # Maximum allowed waiting time during actions (in seconds)
 TIMEOUT_DURATION = 20
@@ -40,21 +41,6 @@ COLOR = 3
 # RTSP server
 URL = "rtsp://192.168.1.10/color"
 
-
-class PoseSafety(Enum):
-    XMIN = 30
-    XMX = 70
-    YMIN = -20
-    YMAX = 20
-    ZMIN = 4
-    ZMAX = 54
-
-    THETAXMIN = 60
-    THETAXMAX = 180
-    THETAYMIN = -60
-    THETAYMAX = 60
-    THETAZMIN = 60
-    THETAZMAX = 120
 
 
 # Create closure to set an event after an END or an ABORT
@@ -73,6 +59,8 @@ def check_for_end_or_abort(e):
             e.set()
     return check
  
+
+
 def example_move_to_home_position(base):
     # Make sure the arm is in Single Level Servoing mode
     base_servo_mode = Base_pb2.ServoingModeInformation()
@@ -108,6 +96,7 @@ def example_move_to_home_position(base):
     else:
         print("Timeout on action notification wait")
     return finished
+
 
 
 def initialize_position(base):
@@ -164,6 +153,7 @@ def initialize_position(base):
     return finished
 
 
+
 def example_angular_action_movement(base):
     
     print("Starting angular action movement ...")
@@ -199,8 +189,9 @@ def example_angular_action_movement(base):
     return finished
 
 
+
 def sequential_movement(base, move):
-    print("Starting sequentail movement")
+    print("Starting sequential movement")
     
     gripper_command = Base_pb2.GripperCommand()
     finger = gripper_command.gripper.finger.add()
@@ -234,7 +225,7 @@ def sequential_movement(base, move):
 
     print("Executing action")
     base.ExecuteAction(action)
-    print(action)
+    #print(action)
     print("Waiting for movement to finish ...")
     finished = e.wait(TIMEOUT_DURATION)
     base.Unsubscribe(notification_handle)
@@ -245,48 +236,6 @@ def sequential_movement(base, move):
         print("Timeout on action notification wait")
     return finished
 
-
-def example_cartesian_action_movement(base, base_cyclic):
-    
-    print("Starting Cartesian action movement ...")
-    action = Base_pb2.Action()
-    action.name = "Example Cartesian action movement"
-    action.application_data = ""
-
-    feedback = base_cyclic.RefreshFeedback()
-
-    cartesian_pose = action.reach_pose.target_pose
-    cartesian_pose.x = 0.388
-    cartesian_pose.y = 0.001
-    cartesian_pose.z = 0.278
-    cartesian_pose.theta_x = 178.3
-    cartesian_pose.theta_y = 0
-    cartesian_pose.theta_z = 90
-    #cartesian_pose.x = feedback.base.tool_pose_x          # (meters)
-    #cartesian_pose.y = feedback.base.tool_pose_y - 0.1    # (meters)
-    #cartesian_pose.z = feedback.base.tool_pose_z - 0.2    # (meters)
-    #cartesian_pose.theta_x = feedback.base.tool_pose_theta_x # (degrees)
-    #cartesian_pose.theta_y = feedback.base.tool_pose_theta_y # (degrees)
-    #cartesian_pose.theta_z = feedback.base.tool_pose_theta_z # (degrees)
-
-    e = threading.Event()
-    notification_handle = base.OnNotificationActionTopic(
-        check_for_end_or_abort(e),
-        Base_pb2.NotificationOptions()
-    )
-
-    print("Executing action")
-    base.ExecuteAction(action)
-    print(action)
-    print("Waiting for movement to finish ...")
-    finished = e.wait(TIMEOUT_DURATION)
-    base.Unsubscribe(notification_handle)
-
-    if finished:
-        print("Cartesian movement completed")
-    else:
-        print("Timeout on action notification wait")
-    return finished
 
 
 def gripper_movement(base):
@@ -306,6 +255,7 @@ def gripper_movement(base):
     return 0
 
 
+
 def color_state(width, height):
     
     process = (
@@ -318,6 +268,7 @@ def color_state(width, height):
     frame = np.frombuffer(in_bytes, np.uint8).reshape((HEIGHT, WIDTH, 3))
 
     return cv2.resize(frame, (width, height), interpolation=cv2.INTER_CUBIC)
+
 
 
 def main():
@@ -333,42 +284,46 @@ def main():
     with utilities.DeviceConnection.createTcpConnection(args) as router:     
         # Create required services
         base = BaseClient(router)
-        
-        step = 0
-        R = 0
-        success = True
-        
+                  
         # min, max of pose for robot safety
-        mini = np.array([0.30, -0.20, 0.05, 60, -60, 60, 0])
+        mini = np.array([0.30, -0.20, 0.05, 60, -60, 60, -1])
         maxi = np.array([0.70, 0.2,0.54, 180, 60, 120, 1])
         interval = maxi - mini
-
-        success &= initialize_position(base)
         
-        frame = color_state(128, 128)
-        cv2.imwrite("images/state%d.jpg" % step, frame)
+        episode = 1
 
-        while True:
-            move = np.random.rand(7)*interval + mini
-            success &= sequential_movement(base, move)
-            
-            reward = input("Assign immediate reward for the action: ")
-            print("Reward {} was assigned".format(reward))
-            
-            R += float(reward)
-            step += 1
-            
+        for ep in range(episode):
+
+            step = 0
+            R = 0
+            success = True
+
+            success &= initialize_position(base)
+        
             frame = color_state(128, 128)
-            cv2.imwrite("images/state%d.jpg" % step, frame)
+            cv2.imwrite("images/ep_{}_state_{}.jpg".format(ep, step), frame)
+    
+            while True:
+                move = np.random.rand(7)*interval + mini
+                success &= sequential_movement(base, move)
+            
+                reward = input("Assign immediate reward for the action: ")
+                print("Reward {} was assigned".format(reward))
+            
+                R += float(reward)
+                step += 1
+            
+                frame = color_state(128, 128)
+                cv2.imwrite("images/ep_{}_state_{}.jpg".format(ep, step), frame)
 
-            print("step {} is done".format(step))
-            if step > 2:
-                print("Episode is done")
-                success &= example_move_to_home_position(base)
+                print("step {} is done".format(step))
+                if step > 2:
+                    print("Episode is done")
+                    success &= example_move_to_home_position(base)
 
-                break
+                    break
 
-        print("Cumulative reward is {}".format(R))
+            print("Cumulative reward is {} at Episode {}".format(R, ep))
 
         return 0 if success else 1
 
