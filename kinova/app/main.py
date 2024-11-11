@@ -30,6 +30,11 @@ import numpy as np
 import ffmpeg
 import cv2
 
+from network import ResidualEncoder, ValueEncoder
+from policy import StochasticActor
+from value import CumRewardCritic
+from buffer import RolloutBuffer
+from agent import AgentPPO
 
 
 # Maximum allowed waiting time during actions (in seconds)
@@ -40,7 +45,19 @@ HEIGHT = 720
 COLOR = 3
 # RTSP server
 URL = "rtsp://192.168.1.10/color"
-
+# Agent Configuration
+CONFIG = {}
+CONFIG['buffer'] = {'name':RolloutBuffer,
+                    'size':5}
+CONFIG['actor'] = {'name':StochasticActor,
+                   'model':ResidualEncoder,
+                   'lr':1e-4,
+                   'epoch':10}
+CONFIG['critic'] = {'name':CumRewardCritic,
+                    'model':ValueEncoder,
+                    'lr':1e-4,
+                    'epoch':10}
+CONFIG['ppo'] = {'clip':0.3}
 
 
 # Create closure to set an event after an END or an ABORT
@@ -154,42 +171,6 @@ def initialize_position(base):
 
 
 
-def example_angular_action_movement(base):
-    
-    print("Starting angular action movement ...")
-    action = Base_pb2.Action()
-    action.name = "Example angular action movement"
-    action.application_data = ""
-
-    actuator_count = base.GetActuatorCount()
-
-    # Place arm straight up
-    for joint_id in range(actuator_count.count):
-        joint_angle = action.reach_joint_angles.joint_angles.joint_angles.add()
-        joint_angle.joint_identifier = joint_id
-        joint_angle.value = 10
-
-    e = threading.Event()
-    notification_handle = base.OnNotificationActionTopic(
-        check_for_end_or_abort(e),
-        Base_pb2.NotificationOptions()
-    )
-    
-    print("Executing action")
-    base.ExecuteAction(action)
-    print(action)
-    print("Waiting for movement to finish ...")
-    finished = e.wait(TIMEOUT_DURATION)
-    base.Unsubscribe(notification_handle)
-
-    if finished:
-        print("Angular movement completed")
-    else:
-        print("Timeout on action notification wait")
-    return finished
-
-
-
 def sequential_movement(base, move):
     print("Starting sequential movement")
     
@@ -238,24 +219,6 @@ def sequential_movement(base, move):
 
 
 
-def gripper_movement(base):
-
-    gripper_command = Base_pb2.GripperCommand()
-    finger = gripper_command.gripper.finger.add()
-
-    gripper_command.mode = Base_pb2.GRIPPER_POSITION
-    finger.finger_identifier = 1
-    finger.value = 0.
-    
-    print("Gripper moves to {}".format(finger.value))
-    base.SendGripperCommand(gripper_command)
-        
-    time.sleep(1)
-    
-    return 0
-
-
-
 def color_state(width, height):
     
     process = (
@@ -290,40 +253,67 @@ def main():
         maxi = np.array([0.70, 0.2,0.54, 180, 60, 120, 1])
         interval = maxi - mini
         
-        episode = 1
+        resize = 128
+        channel = 3
+        state_dim = (channel, resize, resize)
+        action_dim = 7
+
+        agent = AgentPPO(state_dim, action_dim, CONFIG)
+
+        episode = 3
+        trunc = 5
 
         for ep in range(episode):
 
             step = 0
             R = 0
+            done = False
             success = True
 
             success &= initialize_position(base)
         
-            frame = color_state(128, 128)
-            cv2.imwrite("images/ep_{}_state_{}.jpg".format(ep, step), frame)
+            state = color_state(resize, resize)
+            #cv2.imwrite("images/ep_{}_state_{}.jpg".format(ep, step), state)
     
             while True:
-                move = np.random.rand(7)*interval + mini
+                #move = np.random.rand(7)*interval + mini
+                action, value, logp = agent.policy(state)
+                # rescale
+                move = torch.sigmoid(action)*interval + mini
                 success &= sequential_movement(base, move)
             
                 reward = input("Assign immediate reward for the action: ")
                 print("Reward {} was assigned".format(reward))
-            
+                next_state = color_state(resize, resize)
+
+                agent.buffer.push(state, action, reward, value, logp)
+                state = next_state
+
                 R += float(reward)
                 step += 1
             
-                frame = color_state(128, 128)
-                cv2.imwrite("images/ep_{}_state_{}.jpg".format(ep, step), frame)
+                #frame = color_state(resize, resize)
+                #cv2.imwrite("images/ep_{}_state_{}.jpg".format(ep, step), frame)
 
                 print("step {} is done".format(step))
-                if step > 2:
+                if step > trunc:
                     print("Episode is done")
                     success &= example_move_to_home_position(base)
-
                     break
 
+                if int(reward) == 300:
+                    done = True
+                    break
+
+            _, last_value, _ = agent.policy(state)
+
+            if done:
+                last_vale = None
+
+            actor_loss, critic_loss = agnet.learn(last_value)
+
             print("Cumulative reward is {} at Episode {}".format(R, ep))
+            print("Actor loss: {}, Critic loss: {}".format(actor_loss.item(), critic_loss.item()))
 
         return 0 if success else 1
 
