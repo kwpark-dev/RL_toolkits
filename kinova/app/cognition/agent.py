@@ -7,8 +7,9 @@ import torch.optim as optim
 
 # config:{
 #         buffer:{name, size}
-#         actor:{name, model, lr, epoch}
-#         critic:{name, model, lr, epoch}
+#         actor:{name, model, lr}
+#         critic:{name, model, lr}
+#         epoch
 #         ppo:{clip}}
 
 
@@ -21,6 +22,8 @@ class AgentPPO:
         critic = config['critic']
         ppo = config['ppo']
 
+        self.epoch = config['epoch']
+
         self.buffer = buffer['name'](buffer['size'], state_dim, action_dim)
         self.actor = actor['name'](actor['model'], ch, action_dim)
         self.critic = critic['name'](critic['model'], ch, 1)
@@ -28,14 +31,13 @@ class AgentPPO:
         self.opt_actor = optim.Adam(self.actor.parameters(), lr=actor['lr'])
         self.opt_critic = optim.Adam(self.critic.parameters(), lr=critic['lr'])
         
-        self.epoch_actor = actor['epoch']
-        self.epoch_critic = critic['epoch']
-
         self.clip = ppo['clip']
         
         
     def critic_loss(self, data):
         state, rewards_to_go = data['state'], data['rewards_to_go']
+        state = state.permute(0, 3, 1, 2)
+        
         v_loss = ((self.critic(state).squeeze() - rewards_to_go)**2).mean()
 
         return v_loss
@@ -45,6 +47,8 @@ class AgentPPO:
         state, action, advantage, logp_old = [
             data[k] for k in ('state', 'action', 'advantages', 'logp')
         ]
+        state = state.permute(0, 3, 1, 2) # batch, ch, W, H
+         
         _, logp = self.actor(state, action)
         ratio = torch.exp(logp - logp_old)
         clip_adv = torch.clamp(ratio, 1-self.clip, 1+self.clip) * advantage
@@ -60,15 +64,15 @@ class AgentPPO:
         batch = self.buffer.fetch(last_value)
         
         for _ in range(self.epoch):
-            self.optimizer_actor.zero_grad()
+            self.opt_actor.zero_grad()
             loss_pi = self.actor_loss(batch)
             loss_pi.backward()
-            self.optimizer_actor.step()
+            self.opt_actor.step()
         
-            self.optimizer_critic.zero_grad()
+            self.opt_critic.zero_grad()
             loss_v = self.critic_loss(batch)
             loss_v.backward()
-            self.optimizer_critic.step()
+            self.opt_critic.step()
             
         return loss_pi.item(), loss_v.item()
         
@@ -89,9 +93,9 @@ class AgentPPO:
             logp_a = pi.log_prob(a).sum(axis=-1)
             v = self.critic(state.unsqueeze(dim=0))
             
-            print(a.shape)
-            print(logp_a.shape)
-            print(v.shape)
+            #print(a.shape)
+            #print(logp_a.shape)
+            #print(v.shape)
 
         return a.squeeze().numpy(), v.squeeze().numpy(), logp_a.squeeze().numpy()
     

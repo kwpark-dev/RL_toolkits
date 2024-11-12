@@ -14,7 +14,7 @@ class StochasticActor(nn.Module):
 
     def dist(self, state):
         _, _, res = self.model(state)
-        means, log_stds = res.chunk(2, dim=1)
+        means, log_stds = res.chunk(2, dim=-1)
         #means, log_stds = self.model(state).chunk(2, dim=1)
         normal = Normal(means, log_stds.exp())
 
@@ -24,7 +24,7 @@ class StochasticActor(nn.Module):
     def forward(self, state, action):
         pi = self.dist(state)
         logp = pi.log_prob(action).sum(axis=-1)
-
+        
         return pi, logp
 
 
@@ -44,10 +44,15 @@ class StochasticActor(nn.Module):
 if __name__ == '__main__':
     from network import ResidualEncoder
 
-    state = torch.rand(1, 3, 128, 128)
-    action = torch.rand(1, 7)
+    ch = 3
+    adim = 5
+    batch = 6
 
-    actor = StochasticActor(ResidualEncoder, 3, 7)
-    pi, _ = actor(state, action)
+    state = torch.rand(batch, ch, 128, 128)
+    action = torch.rand(batch, adim)
+
+    actor = StochasticActor(ResidualEncoder, 3, 5)
+    pi, logp  = actor(state, action)
+
 
     print(pi.sample())

@@ -29,12 +29,14 @@ from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2
 import numpy as np
 import ffmpeg
 import cv2
+import torch
 
-from network import ResidualEncoder, ValueEncoder
-from policy import StochasticActor
-from value import CumRewardCritic
-from buffer import RolloutBuffer
-from agent import AgentPPO
+from cognition.network import ResidualEncoder, ValueEncoder
+from cognition.policy import StochasticActor
+from cognition.value import CumRewardCritic
+from cognition.buffer import RolloutBuffer
+from cognition.agent import AgentPPO
+
 
 
 # Maximum allowed waiting time during actions (in seconds)
@@ -51,13 +53,13 @@ CONFIG['buffer'] = {'name':RolloutBuffer,
                     'size':5}
 CONFIG['actor'] = {'name':StochasticActor,
                    'model':ResidualEncoder,
-                   'lr':1e-4,
-                   'epoch':10}
+                   'lr':1e-4}
 CONFIG['critic'] = {'name':CumRewardCritic,
                     'model':ValueEncoder,
-                    'lr':1e-4,
-                    'epoch':10}
+                    'lr':1e-4}
 CONFIG['ppo'] = {'clip':0.3}
+CONFIG['epoch'] = 10
+
 
 
 # Create closure to set an event after an END or an ABORT
@@ -218,6 +220,21 @@ def sequential_movement(base, move):
     return finished
 
 
+def infer_pose(base):
+    move = np.zeros(7)
+    
+    joint_angles = base.GetMeasuredJointAngles()
+    pose = base.ComputeForwardKinematics(joint_angles)
+    # I can use GetMeasuredCartesianPose, instead this
+    # Try GetmeasuredGripperMovement(req, ...) to get finger position
+    #gripper = Base_pb2.GripperRequest()
+    #gripper.mode = Base_pb2.GRIPPER_POSITION
+
+    move[:6] = (pose.x, pose.y, pose.z, pose.theta_x, pose.theta_y, pose.theta_z)
+
+    return move
+
+
 
 def color_state(width, height):
     
@@ -234,6 +251,12 @@ def color_state(width, height):
 
 
 
+def sigmoid(x):
+
+    return 1./(1.+np.exp(x))
+
+
+
 def main():
     
     # Import the utilities helper module
@@ -242,7 +265,12 @@ def main():
 
     # Parse arguments
     args = utilities.parseConnectionArguments()
-      
+    
+    # data container
+    cum_reward = []
+    actor_loss_evol = []
+    critic_loss_evol = []
+
     # Create connection to the device and get the router
     with utilities.DeviceConnection.createTcpConnection(args) as router:     
         # Create required services
@@ -255,13 +283,13 @@ def main():
         
         resize = 128
         channel = 3
-        state_dim = (channel, resize, resize)
+        state_dim = (resize, resize, channel)
         action_dim = 7
 
         agent = AgentPPO(state_dim, action_dim, CONFIG)
 
-        episode = 3
-        trunc = 5
+        episode = 10
+        trunc = CONFIG['buffer']['size']
 
         for ep in range(episode):
 
@@ -277,11 +305,18 @@ def main():
     
             while True:
                 #move = np.random.rand(7)*interval + mini
-                action, value, logp = agent.policy(state)
+                action, value, logp = agent.policy(torch.from_numpy(state).permute(2, 1, 0))
                 # rescale
-                move = torch.sigmoid(action)*interval + mini
+                move = sigmoid(action)*interval + mini
                 success &= sequential_movement(base, move)
-            
+                                
+                dice = np.random.rand(1)
+                if dice < 0.1:
+                    print("old movement", move)
+                    demo = input("press Enter after finish demo")
+                    move = infer_pose(base)
+                    print("new movement", move)
+
                 reward = input("Assign immediate reward for the action: ")
                 print("Reward {} was assigned".format(reward))
                 next_state = color_state(resize, resize)
@@ -296,7 +331,7 @@ def main():
                 #cv2.imwrite("images/ep_{}_state_{}.jpg".format(ep, step), frame)
 
                 print("step {} is done".format(step))
-                if step > trunc:
+                if step >= trunc:
                     print("Episode is done")
                     success &= example_move_to_home_position(base)
                     break
@@ -305,15 +340,23 @@ def main():
                     done = True
                     break
 
-            _, last_value, _ = agent.policy(state)
+            _, last_value, _ = agent.policy(torch.from_numpy(state).permute(2, 1, 0))
 
             if done:
                 last_vale = None
 
-            actor_loss, critic_loss = agnet.learn(last_value)
+            actor_loss, critic_loss = agent.learn(last_value)
+
+            cum_reward.append(R)
+            actor_loss_evol.append(actor_loss)
+            critic_loss_evol.append(critic_loss)
 
             print("Cumulative reward is {} at Episode {}".format(R, ep))
-            print("Actor loss: {}, Critic loss: {}".format(actor_loss.item(), critic_loss.item()))
+            print("Actor loss: {}, Critic loss: {}".format(actor_loss, critic_loss))
+
+        np.save('data/cum_reward.npy', np.array(cum_reward))
+        np.save('data/actor_loss_evol.npy', np.array(actor_loss_evol))
+        np.save('data/critic_loss_evol.npy', np.array(critic_loss_evol))
 
         return 0 if success else 1
 
