@@ -220,17 +220,17 @@ def sequential_movement(base, move):
     return finished
 
 
-def infer_pose(base):
+def measure_pose(base):
     move = np.zeros(7)
     
-    joint_angles = base.GetMeasuredJointAngles()
-    pose = base.ComputeForwardKinematics(joint_angles)
-    # I can use GetMeasuredCartesianPose, instead this
-    # Try GetmeasuredGripperMovement(req, ...) to get finger position
-    #gripper = Base_pb2.GripperRequest()
-    #gripper.mode = Base_pb2.GRIPPER_POSITION
+    pose = base.GetMeasuredCartesianPose()
+    
+    gripper = Base_pb2.GripperRequest()
+    gripper.mode = Base_pb2.GRIPPER_POSITION
+    gripper_measure = base.GetMeasuredGripperMovement(gripper)
+    finger = gripper_measure.finger[0].value
 
-    move[:6] = (pose.x, pose.y, pose.z, pose.theta_x, pose.theta_y, pose.theta_z)
+    move = (pose.x, pose.y, pose.z, pose.theta_x, pose.theta_y, pose.theta_z, finger)
 
     return move
 
@@ -288,7 +288,7 @@ def main():
 
         agent = AgentPPO(state_dim, action_dim, CONFIG)
 
-        episode = 10
+        episode = 2
         trunc = CONFIG['buffer']['size']
 
         for ep in range(episode):
@@ -314,7 +314,7 @@ def main():
                 if dice < 0.1:
                     print("old movement", move)
                     demo = input("press Enter after finish demo")
-                    move = infer_pose(base)
+                    move = measure_pose(base)
                     print("new movement", move)
 
                 reward = input("Assign immediate reward for the action: ")
@@ -357,6 +357,8 @@ def main():
         np.save('data/cum_reward.npy', np.array(cum_reward))
         np.save('data/actor_loss_evol.npy', np.array(actor_loss_evol))
         np.save('data/critic_loss_evol.npy', np.array(critic_loss_evol))
+
+        agent.save_model('data/checkpoints/')
 
         return 0 if success else 1
 

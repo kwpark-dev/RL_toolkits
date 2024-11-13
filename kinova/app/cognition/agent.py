@@ -99,7 +99,12 @@ class AgentPPO:
 
         return a.squeeze().numpy(), v.squeeze().numpy(), logp_a.squeeze().numpy()
     
-    
+
+    def save_model(self, path_to_dir):
+        # save DNN models inside of actor and critic
+        torch.save(self.actor.model.state_dict(), path_to_dir+'actor_model.pth')
+        torch.save(self.critic.model.state_dict(), path_to_dir+'critic_model.pth')
+
     
 if __name__ == '__main__':
     from network import ResidualEncoder, ValueEncoder
