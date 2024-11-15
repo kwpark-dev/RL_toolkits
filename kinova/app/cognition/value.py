@@ -9,9 +9,11 @@ class CumRewardCritic(nn.Module):
         super().__init__()
 
         self.model = model(channel_in, output_dim)
+        self.feat = None
+        self.imp = None
 
     def forward(self, state):
-        _, _, res = self.model(state)
+        self.feat, self.imp, res = self.model(state)
 
         return res
 
@@ -36,4 +38,4 @@ if __name__ == '__main__':
     critic = CumRewardCritic(ValueEncoder, 3, 1)
 
     res = critic(img)
-    print(res.shape)
+    print(res.shape, critic.feat.shape, critic.imp.shape)

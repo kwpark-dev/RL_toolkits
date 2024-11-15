@@ -10,10 +10,11 @@ class StochasticActor(nn.Module):
         super().__init__()
         
         self.model = model(channel_in, action_dim)
-
+        self.feat = None
+        self.imp = None
 
     def dist(self, state):
-        _, _, res = self.model(state)
+        self.feat, self.imp, res = self.model(state)
         means, log_stds = res.chunk(2, dim=-1)
         #means, log_stds = self.model(state).chunk(2, dim=1)
         normal = Normal(means, log_stds.exp())

@@ -2,7 +2,9 @@
 
 import torch
 import torch.optim as optim
-
+from scipy import ndimage
+import matplotlib.pyplot as plt
+import cv2
 
 
 # config:{
@@ -55,8 +57,8 @@ class AgentPPO:
         loss_pi = -(torch.min(ratio * advantage, clip_adv)).mean()
         
         return loss_pi
-    
-    
+
+
     def learn(self, last_value=None):
         self.actor.train()
         self.critic.train()
@@ -77,7 +79,7 @@ class AgentPPO:
         return loss_pi.item(), loss_v.item()
         
         
-    def policy(self, state):
+    def policy(self, state, is_eval=False):
         # note that separation btw train and eval mode is required if the model incldues 
         # special layers such as batch norm or layer norm.
         self.actor.eval()
@@ -86,24 +88,31 @@ class AgentPPO:
         state = torch.as_tensor(state, dtype=torch.float32)
         
         with torch.no_grad():
-        
             pi = self.actor.dist(state.unsqueeze(dim=0))
+                
+            if is_eval:
+                value = self.critic(state).squeeze().numpy()
+                mean = pi.mean.squeeze().numpy()
+                feat_ac = self.actor.feat.squeeze().permute(1, 2, 0).numpy()
+                imp_ac = self.actor.imp.squeeze().numpy()
+                feat_cr = self.critic.feat.squeeze().permute(1, 2, 0).numpy()
+                imp_cr = self.critic.imp.squeeze().numpy()
+
+                return mean, value, feat_ac, imp_ac, feat_cr, imp_cr
             
-            a = pi.sample()
+            else:
+                a = pi.sample()
+
             logp_a = pi.log_prob(a).sum(axis=-1)
             v = self.critic(state.unsqueeze(dim=0))
-            
-            #print(a.shape)
-            #print(logp_a.shape)
-            #print(v.shape)
 
         return a.squeeze().numpy(), v.squeeze().numpy(), logp_a.squeeze().numpy()
     
 
-    def save_model(self, path_to_dir):
+    def save_model(self, path_to_name_prefix):
         # save DNN models inside of actor and critic
-        torch.save(self.actor.model.state_dict(), path_to_dir+'actor_model.pth')
-        torch.save(self.critic.model.state_dict(), path_to_dir+'critic_model.pth')
+        torch.save(self.actor.model.state_dict(), path_to_name_prefix+'_actor.pth')
+        torch.save(self.critic.model.state_dict(), path_to_name_prefix+'_critic.pth')
 
     
 if __name__ == '__main__':
@@ -119,12 +128,11 @@ if __name__ == '__main__':
                         'size': 1}
     config['actor'] = {'name':StochasticActor,
                        'model':ResidualEncoder,
-                       'lr':1e-4,
-                       'epoch':10}
+                       'lr':1e-4}
     config['critic'] = {'name':CumRewardCritic,
                         'model':ValueEncoder,
-                        'lr':1e-4,
-                        'epoch':10}
+                        'lr':1e-4}
+    config['epoch'] = 10
     config['ppo'] = {'clip':0.3}
 
     print(config)
@@ -135,10 +143,18 @@ if __name__ == '__main__':
     agent = AgentPPO(state_dim, action_dim, config)
     state = torch.rand(3, 128, 128)
 
-    a, v, logp = agent.policy(state)
-    print(a, v, logp)
+    #a, v, logp = agent.policy(state)
+    a, v, f1, i1, f2, i2 = agent.policy(state, True)
+    print(a.shape, v, f1.shape, i1.shape, f2.shape, i2.shape)
 
+    mini_cam = f1@i1
+    cam = ndimage.zoom(mini_cam, 4)
+    print(cam.dtype)
 
+    activation_map = cv2.applyColorMap(cam, cv2.COLORMAP_JET)
+
+    plt.imshow(activation_map)
+    plt.show()
 
 
 
