@@ -52,8 +52,8 @@ COLOR = 3
 URL = "rtsp://192.168.1.10/color"
 # Exp. Configuration
 STEP = 5
-EPISODE = 4
-DISTURB = 0.5
+EPISODE = 20
+DISTURB = 1.
 # Agent Configuration
 CONFIG = {}
 CONFIG['buffer'] = {'name':RolloutBuffer,
@@ -150,10 +150,10 @@ def initialize_position(base):
     action.application_data = ""
 
     pose = action.reach_pose.target_pose
-    pose.x = 0.420
+    pose.x = 0.50
     pose.y = 0.000
-    pose.z = 0.455
-    pose.theta_x = 178.8
+    pose.z = 0.350
+    pose.theta_x = 172.3
     pose.theta_y = 0
     pose.theta_z = 90
 
@@ -235,7 +235,10 @@ def measure_pose(base):
     gripper = Base_pb2.GripperRequest()
     gripper.mode = Base_pb2.GRIPPER_POSITION
     gripper_measure = base.GetMeasuredGripperMovement(gripper)
-    finger = gripper_measure.finger[0].value
+    finger = -1
+    
+    if gripper_measure.finger[0].value > 0.1:
+        finger = 1
 
     move = (pose.x, pose.y, pose.z, pose.theta_x, pose.theta_y, pose.theta_z, finger)
 
@@ -285,7 +288,7 @@ def main():
                   
         # min, max of pose for robot safety
         mini = np.array([0.30, -0.20, 0.05, 60, -60, 60, -1])
-        maxi = np.array([0.70, 0.2,0.54, 180, 60, 120, 1])
+        maxi = np.array([0.70, 0.2,0.5, 170, 60, 120, 1])
         interval = maxi - mini
         
         resize = 128
@@ -312,14 +315,16 @@ def main():
                 action, value, logp = agent.policy(torch.from_numpy(state).permute(2, 1, 0))
                 # rescale
                 move = sigmoid(action)*interval + mini
-                success &= sequential_movement(base, move)
+                #success &= sequential_movement(base, move)
                                 
                 dice = np.random.rand(1)
                 if dice < DISTURB:
-                    print("old movement", move)
+                    #print("old movement", move)
                     demo = input("press Enter after finish demo")
                     move = measure_pose(base)
                     print("new movement", move)
+
+                success &= sequential_movement(base, move)
 
                 reward = input("Assign immediate reward for the action: ")
                 print("Reward {} was assigned".format(reward))
@@ -381,14 +386,13 @@ def main():
                 ax[0].imshow(cam1, cmap='jet', alpha=0.4)
                 ax[1].imshow(snapshot, alpha=0.6)
                 ax[1].imshow(cam2, cmap='jet', alpha=0.4)
-                
                 plt.savefig("images/test_ep_{}_step_{}.jpg".format(ep, step))
+                #plt.show()
 
                 move = sigmoid(action)*interval + mini
-                print(move)
+                #print(move)
                 success &= sequential_movement(base, move)
                 next_state = color_state(resize, resize)
-                #cv2.imwrite("data/state_after_ep_{}_step_{}.jpg".format(ep, step), state)
 
                 if step >= trunc:
                     print("TEST episode ends")
