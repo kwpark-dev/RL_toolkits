@@ -52,7 +52,7 @@ COLOR = 3
 URL = "rtsp://192.168.1.10/color"
 # Exp. Configuration
 STEP = 5
-EPISODE = 20
+EPISODE = 10
 DISTURB = 1.
 # Agent Configuration
 CONFIG = {}
@@ -60,12 +60,12 @@ CONFIG['buffer'] = {'name':RolloutBuffer,
                     'size':STEP}
 CONFIG['actor'] = {'name':StochasticActor,
                    'model':ResidualEncoder,
-                   'lr':1e-4}
+                   'lr':1e-2}
 CONFIG['critic'] = {'name':CumRewardCritic,
                     'model':ValueEncoder,
-                    'lr':1e-4}
-CONFIG['ppo'] = {'clip':0.2}
-CONFIG['epoch'] = 10
+                    'lr':1e-2}
+CONFIG['ppo'] = {'clip':0.3}
+CONFIG['epoch'] = 4
 
 
 
