@@ -76,6 +76,8 @@ class AgentPPO:
             loss_v.backward()
             self.opt_critic.step()
             
+            print(loss_pi.item(), loss_v.item())
+
         return loss_pi.item(), loss_v.item()
         
         

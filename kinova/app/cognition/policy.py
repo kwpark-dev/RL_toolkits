@@ -49,11 +49,11 @@ if __name__ == '__main__':
     adim = 5
     batch = 6
 
-    state = torch.rand(batch, ch, 128, 128)
-    action = torch.rand(batch, adim)
-
     actor = StochasticActor(ResidualEncoder, 3, 5)
-    pi, logp  = actor(state, action)
+    
+    for _ in range(10):
+        state = torch.rand(1, ch, 128, 128)
+        #action = torch.rand(batch, adim)
 
-
-    print(pi.sample())
+        pi = actor.dist(state)
+        print(pi.mean)

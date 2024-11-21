@@ -18,9 +18,9 @@ def ax_plot(axis, data, config):
 
 
 if __name__ == "__main__":
-    cum_reward = np.load('data/sceneA-II/cum_reward.npy')
-    actor_loss = np.load('data/sceneA-II/actor_loss_evol.npy')
-    critic_loss = np.load('data/sceneA-II/critic_loss_evol.npy')
+    cum_reward = np.load('data/no_disturb/cum_reward.npy')
+    actor_loss = np.load('data/no_disturb/actor_loss_evol.npy')
+    critic_loss = np.load('data/no_disturb/critic_loss_evol.npy')
 
     fig, ax = plt.subplots(1, 3, figsize=(18, 4))
 

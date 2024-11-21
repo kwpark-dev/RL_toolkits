@@ -1,30 +1,20 @@
 #! /usr/bin/env python3
 
-###
-# KINOVA (R) KORTEX (TM)
-#
-# Copyright (c) 2018 Kinova inc. All rights reserved.
-#
-# This software may be modified and distributed
-# under the terms of the BSD 3-Clause license.
-#
-# Refer to the LICENSE file for details.
-#
-###
-
 # Old collections usage
 import collections.abc
 collections.MutableMapping = collections.abc.MutableMapping
 collections.MutableSequence = collections.abc.MutableSequence
 
+################## Kinova kortex driver API #################
 import sys
 import os
 import time
 import threading
-
+# See https://github.com/Kinovarobotics/Kinova-kortex2_Gen3_G3L
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
 from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2
+################## Kinova kortex driver API #################
 
 import numpy as np
 import ffmpeg
@@ -52,20 +42,20 @@ COLOR = 3
 URL = "rtsp://192.168.1.10/color"
 # Exp. Configuration
 STEP = 5
-EPISODE = 10
-DISTURB = 1.
+EPISODE = 20
+DISTURB = 0.2
 # Agent Configuration
 CONFIG = {}
 CONFIG['buffer'] = {'name':RolloutBuffer,
                     'size':STEP}
 CONFIG['actor'] = {'name':StochasticActor,
                    'model':ResidualEncoder,
-                   'lr':1e-2}
+                   'lr':1e-4}
 CONFIG['critic'] = {'name':CumRewardCritic,
                     'model':ValueEncoder,
-                    'lr':1e-2}
+                    'lr':1e-3}
 CONFIG['ppo'] = {'clip':0.3}
-CONFIG['epoch'] = 4
+CONFIG['epoch'] = 12
 
 
 
@@ -245,6 +235,20 @@ def measure_pose(base):
     return move
 
 
+def get_charge(base):    
+    pose = base.GetMeasuredCartesianPose()
+    
+    gripper = Base_pb2.GripperRequest()
+    gripper.mode = Base_pb2.GRIPPER_POSITION
+    gripper_measure = base.GetMeasuredGripperMovement(gripper)
+    finger = gripper_measure.finger[0].value
+
+    reward = (pose.x + pose.y + pose.z +
+              pose.theta_x/180 + pose.theta_y/180 + pose.theta_z/180 +
+              finger)**2
+
+    return -reward
+
 
 def color_state(width, height):
     
@@ -325,9 +329,11 @@ def main():
                     print("new movement", move)
 
                 success &= sequential_movement(base, move)
-
-                reward = input("Assign immediate reward for the action: ")
-                print("Reward {} was assigned".format(reward))
+                charge = get_charge(base)
+                incentive = input("Assign immediate incentive for the action: ")
+                incentive = float(incentive)
+                reward = charge + incentive
+                print("Reward {} = charge {} + incentive {} ".format(incentive+charge, charge, incentive))
                 next_state = color_state(resize, resize)
 
                 agent.buffer.push(state, action, reward, value, logp)
@@ -345,7 +351,7 @@ def main():
                     success &= example_move_to_home_position(base)
                     break
 
-                if int(reward) == 300:
+                if int(incentive) == 50:
                     done = True
                     success &= example_move_to_home_position(base)
                     break
@@ -390,7 +396,8 @@ def main():
                 #plt.show()
 
                 move = sigmoid(action)*interval + mini
-                #print(move)
+                print(action)
+                print(move)
                 success &= sequential_movement(base, move)
                 next_state = color_state(resize, resize)
 
