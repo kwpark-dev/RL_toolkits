@@ -15,7 +15,7 @@ class RolloutBuffer:
     # I modify the original code from following: 
     # https://github.com/upb-lea/reinforcement_learning_course_materials/blob/master/exercises/solutions/ex12/DDPG_and_PPO.ipynb
     # Note that GAE is employed to estimate advantage function, see https://arxiv.org/abs/1506.02438, lambda = 1 case.
-    def __init__(self, size, state_dim, action_dim):
+    def __init__(self, size, state_dim, action_dim, is_multi_head):
         self.action_buf = np.zeros((size, action_dim), dtype=np.float32) 
         self.state_buf = np.zeros((size, *state_dim), dtype=np.float32)
         self.rew_buf = np.zeros(size+1, dtype=np.float32)
@@ -23,9 +23,14 @@ class RolloutBuffer:
         self.logp_buf = np.zeros(size, dtype=np.float32)
         self.i = 0
         self.size = size
+
+        if is_multi_head:
+            self.context_buf = np.zeros((size, 2), dtype=np.float32)
     
+        self.is_multi_head = is_multi_head
+
     
-    def push(self, state, action, reward, value, logp):
+    def push(self, state, action, reward, value, logp, context):
         if state.dtype == 'uint8':
             state = state.astype('float32')/255.0
 
@@ -34,6 +39,9 @@ class RolloutBuffer:
         self.rew_buf[self.i] = reward
         self.val_buf[self.i] = value
         self.logp_buf[self.i] = logp
+        
+        self.context_buf[self.i] = context
+
         self.i += 1
         
         
@@ -60,10 +68,12 @@ class RolloutBuffer:
                  'action': self.action_buf[:self.i],
                  'rewards_to_go': rewards_to_go.copy(),  # make stride positive
                  'advantages': advantages, 
-                 'logp': self.logp_buf[:self.i]}
+                 'logp': self.logp_buf[:self.i],
+                 'context': self.context_buf[:self.i]}
         
         self.i = 0
         
+
         return {k: torch.as_tensor(v, dtype=torch.float32) for k, v in data.items()}
     
     

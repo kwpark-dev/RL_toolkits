@@ -6,27 +6,46 @@ from torch.distributions import Normal
 
 
 class StochasticActor(nn.Module):
-    def __init__(self, model, channel_in, action_dim):
+    def __init__(self, model, channel_in, action_dim, is_multi_head=False):
         super().__init__()
         
-        self.model = model(channel_in, action_dim)
+        self.model = model(channel_in, action_dim, is_multi_head)
         self.feat = None
         self.imp = None
 
-    def dist(self, state):
-        self.feat, self.imp, res = self.model(state)
-        means, log_stds = res.chunk(2, dim=-1)
-        #means, log_stds = self.model(state).chunk(2, dim=1)
-        normal = Normal(means, log_stds.exp())
+        self.is_multi_head = is_multi_head
 
-        return normal
+
+    def dist(self, state):
+        if self.is_multi_head:
+            self.feat, self.imp, context, res = self.model(state)
+            means, log_stds = res.chunk(2, dim=-1)
+
+            normal = Normal(means, log_stds.exp())
+
+            return normal, context
+
+        else:
+            self.feat, self.imp, res = self.model(state)
+            means, log_stds = res.chunk(2, dim=-1)
+        
+            normal = Normal(means, log_stds.exp())
+
+            return normal
 
 
     def forward(self, state, action):
-        pi = self.dist(state)
-        logp = pi.log_prob(action).sum(axis=-1)
+        if self.is_multi_head:
+            pi, context = self.dist(state)
+            logp = pi.log_prob(action).sum(axis=-1)
         
-        return pi, logp
+            return pi, logp, context
+
+        else:
+            pi, self.dist(state)
+            logp = pi.log_prob(action).sum(axis=-1)
+
+            return pi, logp
 
 
     def train(self):
@@ -40,8 +59,6 @@ class StochasticActor(nn.Module):
 
 
 
-
-
 if __name__ == '__main__':
     from network import ResidualEncoder
 
@@ -49,11 +66,11 @@ if __name__ == '__main__':
     adim = 5
     batch = 6
 
-    actor = StochasticActor(ResidualEncoder, 3, 5)
+    actor = StochasticActor(ResidualEncoder, 3, 5, True)
     
-    for _ in range(10):
+    for _ in range(3):
         state = torch.rand(1, ch, 128, 128)
-        #action = torch.rand(batch, adim)
+        action = torch.rand(1, adim)
 
-        pi = actor.dist(state)
-        print(pi.mean)
+        pi, logp, context = actor(state, action)
+        print(pi.mean, logp.shape)

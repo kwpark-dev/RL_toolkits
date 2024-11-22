@@ -5,10 +5,10 @@ import torch.nn as nn
 
 # wrapper to sync format with actor class 
 class CumRewardCritic(nn.Module):
-    def __init__(self, model, channel_in, output_dim):
+    def __init__(self, model, channel_in, output_dim, is_multi_head=False):
         super().__init__()
 
-        self.model = model(channel_in, output_dim)
+        self.model = model(channel_in, output_dim, is_multi_head)
         self.feat = None
         self.imp = None
 

@@ -26,14 +26,16 @@ class AgentPPO:
 
         self.epoch = config['epoch']
 
-        self.buffer = buffer['name'](buffer['size'], state_dim, action_dim)
-        self.actor = actor['name'](actor['model'], ch, action_dim)
-        self.critic = critic['name'](critic['model'], ch, 1)
+        self.buffer = buffer['name'](buffer['size'], state_dim, action_dim, actor['is_multi_head'])
+        self.actor = actor['name'](actor['model'], ch, action_dim, actor['is_multi_head'])
+        self.critic = critic['name'](critic['model'], ch, 1, critic['is_multi_head'])
         
         self.opt_actor = optim.Adam(self.actor.parameters(), lr=actor['lr'])
         self.opt_critic = optim.Adam(self.critic.parameters(), lr=critic['lr'])
         
         self.clip = ppo['clip']
+
+        self.is_multi_head = actor['is_multi_head']
         
         
     def critic_loss(self, data):
@@ -46,17 +48,28 @@ class AgentPPO:
     
     
     def actor_loss(self, data):
-        state, action, advantage, logp_old = [
-            data[k] for k in ('state', 'action', 'advantages', 'logp')
+        state, action, advantage, logp_old, context = [
+            data[k] for k in ('state', 'action', 'advantages', 'logp', 'context')
         ]
         state = state.permute(0, 3, 1, 2) # batch, ch, W, H
-         
-        _, logp = self.actor(state, action)
-        ratio = torch.exp(logp - logp_old)
-        clip_adv = torch.clamp(ratio, 1-self.clip, 1+self.clip) * advantage
-        loss_pi = -(torch.min(ratio * advantage, clip_adv)).mean()
         
-        return loss_pi
+        if self.is_multi_head:
+            _, logp, pred = self.actor(state, action)
+            ratio = torch.exp(logp - logp_old)
+            clip_adv = torch.clamp(ratio, 1-self.clip, 1+self.clip) * advantage
+            loss_pi = -(torch.min(ratio * advantage, clip_adv)).mean()
+        
+            loss_cont = ((pred.sigmoid() - context)**2).mean()
+
+            return loss_pi, loss_cont
+
+        else:
+            _, logp = self.actor(state, action)
+            ratio = torch.exp(logp - logp_old)
+            clip_adv = torch.clamp(ratio, 1-self.clip, 1+self.clip) * advantage
+            loss_pi = -(torch.min(ratio * advantage, clip_adv)).mean()
+        
+            return loss_pi
 
 
     def learn(self, last_value=None):
@@ -67,8 +80,9 @@ class AgentPPO:
         
         for _ in range(self.epoch):
             self.opt_actor.zero_grad()
-            loss_pi = self.actor_loss(batch)
-            loss_pi.backward()
+            loss_pi, loss_cont = self.actor_loss(batch)
+            loss_ac = loss_pi + loss_cont*0.25
+            loss_ac.backward()
             self.opt_actor.step()
         
             self.opt_critic.zero_grad()
@@ -76,9 +90,9 @@ class AgentPPO:
             loss_v.backward()
             self.opt_critic.step()
             
-            print(loss_pi.item(), loss_v.item())
+            print(loss_pi.item(), loss_cont.item(), loss_v.item())
 
-        return loss_pi.item(), loss_v.item()
+        return loss_ac.item(), loss_v.item()
         
         
     def policy(self, state, is_eval=False):
@@ -90,7 +104,7 @@ class AgentPPO:
         state = torch.as_tensor(state, dtype=torch.float32)
         
         with torch.no_grad():
-            pi = self.actor.dist(state.unsqueeze(dim=0))
+            pi, cont = self.actor.dist(state.unsqueeze(dim=0))
                 
             if is_eval:
                 value = self.critic(state).squeeze().numpy()
@@ -99,8 +113,9 @@ class AgentPPO:
                 imp_ac = self.actor.imp.squeeze().numpy()
                 feat_cr = self.critic.feat.squeeze().permute(1, 2, 0).numpy()
                 imp_cr = self.critic.imp.squeeze().numpy()
+                cont = cont.squeeze().sigmoid().numpy()
 
-                return mean, value, feat_ac, imp_ac, feat_cr, imp_cr
+                return mean, value, feat_ac, imp_ac, feat_cr, imp_cr, cont
             
             else:
                 a = pi.sample()
@@ -130,10 +145,12 @@ if __name__ == '__main__':
                         'size': 1}
     config['actor'] = {'name':StochasticActor,
                        'model':ResidualEncoder,
-                       'lr':1e-4}
+                       'lr':1e-4,
+                       'is_multi_head':True}
     config['critic'] = {'name':CumRewardCritic,
                         'model':ValueEncoder,
-                        'lr':1e-4}
+                        'lr':1e-4, 
+                        'is_multi_head':False}
     config['epoch'] = 10
     config['ppo'] = {'clip':0.3}
 
@@ -146,17 +163,17 @@ if __name__ == '__main__':
     state = torch.rand(3, 128, 128)
 
     #a, v, logp = agent.policy(state)
-    a, v, f1, i1, f2, i2 = agent.policy(state, True)
-    print(a.shape, v, f1.shape, i1.shape, f2.shape, i2.shape)
+    a, v, f1, i1, f2, i2, cont = agent.policy(state, True)
+    print(a.shape, v, f1.shape, i1.shape, f2.shape, i2.shape, cont.shape)
 
-    mini_cam = f1@i1
-    cam = ndimage.zoom(mini_cam, 4)
-    print(cam.dtype)
+    #mini_cam = f1@i1
+    #cam = ndimage.zoom(mini_cam, 4)
+    #print(cam.dtype)
 
-    activation_map = cv2.applyColorMap(cam, cv2.COLORMAP_JET)
+    #activation_map = cv2.applyColorMap(cam, cv2.COLORMAP_JET)
 
-    plt.imshow(activation_map)
-    plt.show()
+    #plt.imshow(activation_map)
+    #plt.show()
 
 
 

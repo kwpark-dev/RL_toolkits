@@ -50,10 +50,12 @@ CONFIG['buffer'] = {'name':RolloutBuffer,
                     'size':STEP}
 CONFIG['actor'] = {'name':StochasticActor,
                    'model':ResidualEncoder,
-                   'lr':1e-4}
+                   'lr':1e-4,
+                   'is_multi_head':True}
 CONFIG['critic'] = {'name':CumRewardCritic,
                     'model':ValueEncoder,
-                    'lr':1e-3}
+                    'lr':1e-3,
+                    'is_multi_head':False}
 CONFIG['ppo'] = {'clip':0.3}
 CONFIG['epoch'] = 12
 
@@ -334,9 +336,15 @@ def main():
                 incentive = float(incentive)
                 reward = charge + incentive
                 print("Reward {} = charge {} + incentive {} ".format(incentive+charge, charge, incentive))
+                
+                is_on_sight = input("Is it on sight? Yes 1, No 0: ")
+                grippable = input ("Is it grippable? Yes 1, No 0: ")
+                print("It was sight {}, grip {}".format(is_on_sight, grippable))
+                context = np.array([is_on_sight, grippable])
+
                 next_state = color_state(resize, resize)
 
-                agent.buffer.push(state, action, reward, value, logp)
+                agent.buffer.push(state, action, reward, value, logp, context)
                 state = next_state
 
                 R += float(reward)
@@ -362,7 +370,7 @@ def main():
                 last_vale = None
             # Training starts
             actor_loss, critic_loss = agent.learn(last_value)
-
+            # Note that actor loss = policy loss + context*0.5
             cum_reward.append(R)
             actor_loss_evol.append(actor_loss)
             critic_loss_evol.append(critic_loss)
@@ -381,7 +389,9 @@ def main():
             
             while True:
                 snapshot = state.copy()
-                action, val, f1, w1, f2, w2 = agent.policy(torch.from_numpy(state).permute(2, 1, 0), True)
+                action, val, f1, w1, f2, w2, context = agent.policy(torch.from_numpy(state).permute(2, 1, 0), True)
+                is_sight, is_grip = context
+
                 fig, ax = plt.subplots(1, 2, figsize=(10, 4))
                 cam1 = f1@w1
                 cam2 = f2@w2
@@ -392,7 +402,7 @@ def main():
                 ax[0].imshow(cam1, cmap='jet', alpha=0.4)
                 ax[1].imshow(snapshot, alpha=0.6)
                 ax[1].imshow(cam2, cmap='jet', alpha=0.4)
-                plt.savefig("images/test_ep_{}_step_{}.jpg".format(ep, step))
+                plt.savefig("images/test_ep_{}_step_{}_sight_{}_grip_{}.jpg".format(ep, step, sigmoid(is_sight), sigmoid(is_grip)))
                 #plt.show()
 
                 move = sigmoid(action)*interval + mini

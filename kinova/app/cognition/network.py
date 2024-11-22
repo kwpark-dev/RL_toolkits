@@ -4,12 +4,13 @@ import torch.nn as nn
 
 
 class ResidualEncoder(nn.Module):
-    def __init__(self, input_channel, output_dim):
+    def __init__(self, input_channel, output_dim, is_multi_head=False):
         super().__init__()
 
         self.input = input_channel
         self.output = output_dim
-        
+        self.is_multi_head = is_multi_head
+
         self.maxpool = nn.MaxPool2d(2, 2)
         self.gapool = nn.AvgPool2d(32, 32)
         self.conv_1x1_64 = self._conv_1x1(32, 64)
@@ -20,6 +21,9 @@ class ResidualEncoder(nn.Module):
         self.module_32 = self._build_module(32, 64, 128, 3, 1, 1)
 
         self.fc = nn.Linear(128, 2*output_dim)
+
+        if self.is_multi_head:
+            self.fc2 = nn.Linear(128, 2)
 
 
     def _build_module(self, size, cin, cout, k, s, p):
@@ -51,15 +55,22 @@ class ResidualEncoder(nn.Module):
         x = self.gapool(feature) 
         y = x.squeeze()
 
-        y = self.fc(y)
+        if self.is_multi_head:
+            z = self.fc2(y)
+            y = self.fc(y)
 
-        return feature, x, y.unsqueeze(dim=0)
+            return feature, x, z.unsqueeze(dim=0), y.unsqueeze(dim=0)
+
+        else:
+            y = self.fc(y)
+
+            return feature, x, y.unsqueeze(dim=0)
 
 
 
 class ValueEncoder(ResidualEncoder):
-    def __init__(self, input_channel, output_dim):
-        super().__init__(input_channel, output_dim)
+    def __init__(self, input_channel, output_dim, is_multi_head=False):
+        super().__init__(input_channel, output_dim, is_multi_head)
 
         self.fc = nn.Linear(128, output_dim)
 
@@ -69,13 +80,13 @@ class ValueEncoder(ResidualEncoder):
 if __name__ == "__main__":
     test_img = torch.rand(1, 3, 128, 128)
     
-    actor = ResidualEncoder(3, 7)
+    actor = ResidualEncoder(3, 7, True)
     critic = ValueEncoder(3, 1)
     
-    featac, wac, res = actor(test_img)
+    featac, wac, util, res = actor(test_img)
     featcr, wcr, scr = critic(test_img)
 
-    print(res.shape, wac.shape, featac.shape)
+    print(res.shape, util.shape)
     print(scr, wcr.shape, featcr.shape)
 
 
