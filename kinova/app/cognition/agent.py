@@ -81,7 +81,7 @@ class AgentPPO:
         for _ in range(self.epoch):
             self.opt_actor.zero_grad()
             loss_pi, loss_cont = self.actor_loss(batch)
-            loss_ac = loss_pi + loss_cont*0.25
+            loss_ac = loss_pi + loss_cont*0.1
             loss_ac.backward()
             self.opt_actor.step()
         
@@ -90,7 +90,10 @@ class AgentPPO:
             loss_v.backward()
             self.opt_critic.step()
             
-            print(loss_pi.item(), loss_cont.item(), loss_v.item())
+            print('policy loss: ', loss_pi.item(), 
+                  'context loss: ', loss_cont.item(),
+                  'actor loss', loss_ac.item(),
+                  'critic loss: ',  loss_v.item())
 
         return loss_ac.item(), loss_v.item()
         

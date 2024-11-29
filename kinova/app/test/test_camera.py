@@ -21,12 +21,12 @@ import cv2
 # np.uint16
 
 
-url = "rtsp://192.168.1.10/color"
+url = "rtsp://192.168.1.10/depth"
 
 process = (
         ffmpeg
         .input(url, rtsp_transport='tcp', t=1)
-        .output('pipe:', format='rawvideo', pix_fmt='bgr24', vframes=1)
+        .output('pipe:', format='rawvideo', pix_fmt='gray16le', vframes=1)
         .run_async(pipe_stdout=True)
         )
 
@@ -34,10 +34,13 @@ w = 1280
 h = 720
 
 
-in_bytes = process.stdout.read(w*h*3)
+in_bytes = process.stdout.read(w*h*2)
 
-frame = np.frombuffer(in_bytes, np.uint16).reshape((h, w, 3))
-cv2.imwrite("images/color_single_image.jpg", frame)
+frame = np.frombuffer(in_bytes, np.uint16).reshape((h, w))
+cv2.imwrite("./depth_single_image.jpg", frame)
+
+normalized = cv2.normalize(frame, None, 0, 255, cv2.NMAX_MINMAX).astype(np.uint8)
+cv2.imwrite("./normal_depth.jpg", normalized)
 
 process.stdout.close()
 process.wait()

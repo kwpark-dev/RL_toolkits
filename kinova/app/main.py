@@ -41,9 +41,9 @@ COLOR = 3
 # RTSP server
 URL = "rtsp://192.168.1.10/color"
 # Exp. Configuration
-STEP = 5
+STEP = 2
 EPISODE = 20
-DISTURB = 0.2
+DISTURB = 0.0
 # Agent Configuration
 CONFIG = {}
 CONFIG['buffer'] = {'name':RolloutBuffer,
@@ -142,12 +142,12 @@ def initialize_position(base):
     action.application_data = ""
 
     pose = action.reach_pose.target_pose
-    pose.x = 0.50
-    pose.y = 0.000
-    pose.z = 0.350
-    pose.theta_x = 172.3
-    pose.theta_y = 0
-    pose.theta_z = 90
+    pose.x = 0.40 + 0.1*np.random.rand(1).item()
+    pose.y = 0.000 + 0.05*np.random.rand(1).item()
+    pose.z = 0.250 + 0.05*np.random.rand(1).item()
+    pose.theta_x = 165 + 5*np.random.rand(1).item()
+    pose.theta_y = 0 + 5*np.random.rand(1).item()
+    pose.theta_z = 85 + 5*np.random.rand(1).item()
 
     e = threading.Event()
     notification_handle = base.OnNotificationActionTopic(
@@ -245,11 +245,11 @@ def get_charge(base):
     gripper_measure = base.GetMeasuredGripperMovement(gripper)
     finger = gripper_measure.finger[0].value
 
-    reward = (pose.x + pose.y + pose.z +
-              pose.theta_x/180 + pose.theta_y/180 + pose.theta_z/180 +
-              finger)**2
+    reward = (pose.x + sigmoid(pose.y) + pose.z**3 +
+              pose.theta_x/180 + sigmoid(pose.theta_y/180) + (pose.theta_z/180)**3 +
+              finger - 10)
 
-    return -reward
+    return reward
 
 
 def color_state(width, height):
@@ -269,7 +269,7 @@ def color_state(width, height):
 
 def sigmoid(x):
 
-    return 1./(1.+np.exp(x))
+    return 1./(1.+np.exp(-x))
 
 
 
