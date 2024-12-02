@@ -41,21 +41,19 @@ COLOR = 3
 # RTSP server
 URL = "rtsp://192.168.1.10/color"
 # Exp. Configuration
-STEP = 2
+STEP = 16
 EPISODE = 20
-DISTURB = 0.0
+DISTURB = 0.25
 # Agent Configuration
 CONFIG = {}
 CONFIG['buffer'] = {'name':RolloutBuffer,
                     'size':STEP}
 CONFIG['actor'] = {'name':StochasticActor,
                    'model':ResidualEncoder,
-                   'lr':1e-4,
-                   'is_multi_head':True}
+                   'lr':1e-4}
 CONFIG['critic'] = {'name':CumRewardCritic,
                     'model':ValueEncoder,
-                    'lr':1e-3,
-                    'is_multi_head':False}
+                    'lr':1e-3}
 CONFIG['ppo'] = {'clip':0.3}
 CONFIG['epoch'] = 12
 
@@ -257,6 +255,7 @@ def color_state(width, height):
     process = (
                ffmpeg.input(URL, rtsp_transport='tcp', t=1)
                      .output('pipe:', format='rawvideo', pix_fmt='bgr24', vframes=1)
+                     .global_args('-loglevel', 'quiet')
                      .run_async(pipe_stdout=True)
               )
 
@@ -268,7 +267,6 @@ def color_state(width, height):
 
 
 def sigmoid(x):
-
     return 1./(1.+np.exp(-x))
 
 
@@ -337,14 +335,9 @@ def main():
                 reward = charge + incentive
                 print("Reward {} = charge {} + incentive {} ".format(incentive+charge, charge, incentive))
                 
-                is_on_sight = input("Is it on sight? Yes 1, No 0: ")
-                grippable = input ("Is it grippable? Yes 1, No 0: ")
-                print("It was sight {}, grip {}".format(is_on_sight, grippable))
-                context = np.array([is_on_sight, grippable])
-
                 next_state = color_state(resize, resize)
 
-                agent.buffer.push(state, action, reward, value, logp, context)
+                agent.buffer.push(state, action, reward, value, logp)
                 state = next_state
 
                 R += float(reward)
@@ -367,9 +360,9 @@ def main():
             _, last_value, _ = agent.policy(torch.from_numpy(state).permute(2, 1, 0))
 
             if done:
-                last_vale = None
+                last_value = None
             # Training starts
-            actor_loss, critic_loss = agent.learn(last_value)
+            actor_loss, critic_loss = agent.learn(last_value=last_value)
             # Note that actor loss = policy loss + context*0.5
             cum_reward.append(R)
             actor_loss_evol.append(actor_loss)
@@ -389,8 +382,7 @@ def main():
             
             while True:
                 snapshot = state.copy()
-                action, val, f1, w1, f2, w2, context = agent.policy(torch.from_numpy(state).permute(2, 1, 0), True)
-                is_sight, is_grip = context
+                action, val, f1, w1, f2, w2 = agent.policy(torch.from_numpy(state).permute(2, 1, 0), True)
 
                 fig, ax = plt.subplots(1, 2, figsize=(10, 4))
                 cam1 = f1@w1
@@ -402,12 +394,12 @@ def main():
                 ax[0].imshow(cam1, cmap='jet', alpha=0.4)
                 ax[1].imshow(snapshot, alpha=0.6)
                 ax[1].imshow(cam2, cmap='jet', alpha=0.4)
-                plt.savefig("images/test_ep_{}_step_{}_sight_{}_grip_{}.jpg".format(ep, step, sigmoid(is_sight), sigmoid(is_grip)))
+                plt.savefig("images/test_ep_{}_step_{}.jpg".format(ep, step))
                 #plt.show()
 
                 move = sigmoid(action)*interval + mini
-                print(action)
                 print(move)
+                print("This move has {} value".format(value))
                 success &= sequential_movement(base, move)
                 next_state = color_state(resize, resize)
 
@@ -418,7 +410,6 @@ def main():
 
                 step += 1
                 state = next_state
-
 
         np.save('data/cum_reward.npy', np.array(cum_reward))
         np.save('data/actor_loss_evol.npy', np.array(actor_loss_evol))

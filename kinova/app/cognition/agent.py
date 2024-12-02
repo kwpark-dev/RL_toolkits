@@ -26,53 +26,41 @@ class AgentPPO:
 
         self.epoch = config['epoch']
 
-        self.buffer = buffer['name'](buffer['size'], state_dim, action_dim, actor['is_multi_head'])
-        self.actor = actor['name'](actor['model'], ch, action_dim, actor['is_multi_head'])
-        self.critic = critic['name'](critic['model'], ch, 1, critic['is_multi_head'])
+        self.buffer = buffer['name'](buffer['size'], state_dim, action_dim)
+        self.actor = actor['name'](actor['model'], ch, action_dim)
+        self.critic = critic['name'](critic['model'], ch, 1)
         
         self.opt_actor = optim.Adam(self.actor.parameters(), lr=actor['lr'])
         self.opt_critic = optim.Adam(self.critic.parameters(), lr=critic['lr'])
         
         self.clip = ppo['clip']
-
-        self.is_multi_head = actor['is_multi_head']
         
         
     def critic_loss(self, data):
         state, rewards_to_go = data['state'], data['rewards_to_go']
         state = state.permute(0, 3, 1, 2)
-        
+        #print('\n', state.shape, '\n')
         v_loss = ((self.critic(state).squeeze() - rewards_to_go)**2).mean()
 
         return v_loss
     
     
     def actor_loss(self, data):
-        state, action, advantage, logp_old, context = [
-            data[k] for k in ('state', 'action', 'advantages', 'logp', 'context')
+        state, action, advantage, logp_old = [
+            data[k] for k in ('state', 'action', 'advantages', 'logp')
         ]
         state = state.permute(0, 3, 1, 2) # batch, ch, W, H
-        
-        if self.is_multi_head:
-            _, logp, pred = self.actor(state, action)
-            ratio = torch.exp(logp - logp_old)
-            clip_adv = torch.clamp(ratio, 1-self.clip, 1+self.clip) * advantage
-            loss_pi = -(torch.min(ratio * advantage, clip_adv)).mean()
-        
-            loss_cont = ((pred.sigmoid() - context)**2).mean()
+        #print('\n', state.shape, '\n') 
+        _, logp = self.actor(state, action)
+        ratio = torch.exp(logp - logp_old)
+        clip_adv = torch.clamp(ratio, 1-self.clip, 1+self.clip) * advantage
+        loss_pi = -(torch.min(ratio * advantage, clip_adv)).mean()
+        entropy = - (logp.exp() * logp).sum()
 
-            return loss_pi, loss_cont
-
-        else:
-            _, logp = self.actor(state, action)
-            ratio = torch.exp(logp - logp_old)
-            clip_adv = torch.clamp(ratio, 1-self.clip, 1+self.clip) * advantage
-            loss_pi = -(torch.min(ratio * advantage, clip_adv)).mean()
-        
-            return loss_pi
+        return loss_pi, entropy
 
 
-    def learn(self, last_value=None):
+    def learn(self, last_value=None, beta=1.0):
         self.actor.train()
         self.critic.train()
         
@@ -80,8 +68,9 @@ class AgentPPO:
         
         for _ in range(self.epoch):
             self.opt_actor.zero_grad()
-            loss_pi, loss_cont = self.actor_loss(batch)
-            loss_ac = loss_pi + loss_cont*0.1
+            loss_pi, entropy = self.actor_loss(batch)
+            
+            loss_ac = loss_pi + beta*entropy
             loss_ac.backward()
             self.opt_actor.step()
         
@@ -90,10 +79,10 @@ class AgentPPO:
             loss_v.backward()
             self.opt_critic.step()
             
-            print('policy loss: ', loss_pi.item(), 
-                  'context loss: ', loss_cont.item(),
-                  'actor loss', loss_ac.item(),
-                  'critic loss: ',  loss_v.item())
+            print('policy loss: ', round(loss_pi.item(), 3),
+                  'entropy', round(entropy.item(), 3),
+                  'actor loss', round(loss_ac.item(), 3),
+                  'critic loss: ',  round(loss_v.item(), 3))
 
         return loss_ac.item(), loss_v.item()
         
@@ -105,28 +94,27 @@ class AgentPPO:
         self.critic.eval()
         
         state = torch.as_tensor(state, dtype=torch.float32)
-        
+        #print(state.shape) 
         with torch.no_grad():
-            pi, cont = self.actor.dist(state.unsqueeze(dim=0))
+            pi = self.actor.dist(state.unsqueeze(dim=0))
                 
             if is_eval:
-                value = self.critic(state).squeeze().numpy()
+                value = self.critic(state.unsqueeze(dim=0)).squeeze().numpy()
                 mean = pi.mean.squeeze().numpy()
                 feat_ac = self.actor.feat.squeeze().permute(1, 2, 0).numpy()
                 imp_ac = self.actor.imp.squeeze().numpy()
                 feat_cr = self.critic.feat.squeeze().permute(1, 2, 0).numpy()
                 imp_cr = self.critic.imp.squeeze().numpy()
-                cont = cont.squeeze().sigmoid().numpy()
 
-                return mean, value, feat_ac, imp_ac, feat_cr, imp_cr, cont
+                return mean, value, feat_ac, imp_ac, feat_cr, imp_cr
             
             else:
                 a = pi.sample()
 
-            logp_a = pi.log_prob(a).sum(axis=-1)
-            v = self.critic(state.unsqueeze(dim=0))
+                logp_a = pi.log_prob(a).sum(axis=-1)
+                v = self.critic(state.unsqueeze(dim=0))
 
-        return a.squeeze().numpy(), v.squeeze().numpy(), logp_a.squeeze().numpy()
+                return a.squeeze().numpy(), v.squeeze().numpy(), logp_a.squeeze().numpy()
     
 
     def save_model(self, path_to_name_prefix):
@@ -141,19 +129,15 @@ if __name__ == '__main__':
     from value import CumRewardCritic
     from buffer import RolloutBuffer
 
-
-
     config = {}
     config['buffer'] = {'name':RolloutBuffer,
                         'size': 1}
     config['actor'] = {'name':StochasticActor,
                        'model':ResidualEncoder,
-                       'lr':1e-4,
-                       'is_multi_head':True}
+                       'lr':1e-4}
     config['critic'] = {'name':CumRewardCritic,
                         'model':ValueEncoder,
-                        'lr':1e-4, 
-                        'is_multi_head':False}
+                        'lr':1e-4}
     config['epoch'] = 10
     config['ppo'] = {'clip':0.3}
 
@@ -166,8 +150,11 @@ if __name__ == '__main__':
     state = torch.rand(3, 128, 128)
 
     #a, v, logp = agent.policy(state)
-    a, v, f1, i1, f2, i2, cont = agent.policy(state, True)
-    print(a.shape, v, f1.shape, i1.shape, f2.shape, i2.shape, cont.shape)
+    a, v, f1, i1, f2, i2 = agent.policy(state, True)
+    print(a.shape, v, f1.shape, i1.shape, f2.shape, i2.shape)
+
+    a, v, logp = agent.policy(state)
+    print(a.shape, v.shape, logp.shape)
 
     #mini_cam = f1@i1
     #cam = ndimage.zoom(mini_cam, 4)

@@ -4,12 +4,11 @@ import torch.nn as nn
 
 
 class ResidualEncoder(nn.Module):
-    def __init__(self, input_channel, output_dim, is_multi_head=False):
+    def __init__(self, input_channel, output_dim):
         super().__init__()
 
         self.input = input_channel
         self.output = output_dim
-        self.is_multi_head = is_multi_head
 
         self.maxpool = nn.MaxPool2d(2, 2)
         self.gapool = nn.AvgPool2d(32, 32)
@@ -20,10 +19,10 @@ class ResidualEncoder(nn.Module):
         self.module_64 = self._build_module(64, 32, 64, 3, 1, 1)
         self.module_32 = self._build_module(32, 64, 128, 3, 1, 1)
 
-        self.fc = nn.Linear(128, 2*output_dim)
-
-        if self.is_multi_head:
-            self.fc2 = nn.Linear(128, 2)
+        self.head = nn.Sequential(
+                        nn.Linear(128, 256),
+                        nn.ReLU(),
+                        nn.Linear(256, 2*output_dim))
 
 
     def _build_module(self, size, cin, cout, k, s, p):
@@ -55,38 +54,34 @@ class ResidualEncoder(nn.Module):
         x = self.gapool(feature) 
         y = x.squeeze()
 
-        if self.is_multi_head:
-            z = self.fc2(y)
-            y = self.fc(y)
+        y = self.head(y)
 
-            return feature, x, z.unsqueeze(dim=0), y.unsqueeze(dim=0)
-
-        else:
-            y = self.fc(y)
-
-            return feature, x, y.unsqueeze(dim=0)
+        return feature, x, y.unsqueeze(dim=0)
 
 
 
 class ValueEncoder(ResidualEncoder):
-    def __init__(self, input_channel, output_dim, is_multi_head=False):
-        super().__init__(input_channel, output_dim, is_multi_head)
+    def __init__(self, input_channel, output_dim):
+        super().__init__(input_channel, output_dim)
 
-        self.fc = nn.Linear(128, output_dim)
-
+        
+        self.head = nn.Sequential(
+                        nn.Linear(128, 256),
+                        nn.ReLU(),
+                        nn.Linear(256, 1))
 
 
 
 if __name__ == "__main__":
     test_img = torch.rand(1, 3, 128, 128)
     
-    actor = ResidualEncoder(3, 7, True)
+    actor = ResidualEncoder(3, 7)
     critic = ValueEncoder(3, 1)
     
-    featac, wac, util, res = actor(test_img)
+    featac, wac, res = actor(test_img)
     featcr, wcr, scr = critic(test_img)
 
-    print(res.shape, util.shape)
+    print(res.shape)
     print(scr, wcr.shape, featcr.shape)
 
 

@@ -6,46 +6,28 @@ from torch.distributions import Normal
 
 
 class StochasticActor(nn.Module):
-    def __init__(self, model, channel_in, action_dim, is_multi_head=False):
+    def __init__(self, model, channel_in, action_dim):
         super().__init__()
         
-        self.model = model(channel_in, action_dim, is_multi_head)
+        self.model = model(channel_in, action_dim)
         self.feat = None
         self.imp = None
 
-        self.is_multi_head = is_multi_head
-
 
     def dist(self, state):
-        if self.is_multi_head:
-            self.feat, self.imp, context, res = self.model(state)
-            means, log_stds = res.chunk(2, dim=-1)
-
-            normal = Normal(means, log_stds.exp())
-
-            return normal, context
-
-        else:
-            self.feat, self.imp, res = self.model(state)
-            means, log_stds = res.chunk(2, dim=-1)
+        self.feat, self.imp, res = self.model(state)
+        means, log_stds = res.chunk(2, dim=-1)
         
-            normal = Normal(means, log_stds.exp())
+        normal = Normal(means, log_stds.exp())
 
-            return normal
+        return normal
 
 
     def forward(self, state, action):
-        if self.is_multi_head:
-            pi, context = self.dist(state)
-            logp = pi.log_prob(action).sum(axis=-1)
-        
-            return pi, logp, context
+        pi = self.dist(state)
+        logp = pi.log_prob(action).sum(axis=-1)
 
-        else:
-            pi, self.dist(state)
-            logp = pi.log_prob(action).sum(axis=-1)
-
-            return pi, logp
+        return pi, logp
 
 
     def train(self):
@@ -66,11 +48,11 @@ if __name__ == '__main__':
     adim = 5
     batch = 6
 
-    actor = StochasticActor(ResidualEncoder, 3, 5, True)
+    actor = StochasticActor(ResidualEncoder, 3, 5)
     
     for _ in range(3):
         state = torch.rand(1, ch, 128, 128)
         action = torch.rand(1, adim)
 
-        pi, logp, context = actor(state, action)
+        pi, logp = actor(state, action)
         print(pi.mean, logp.shape)
