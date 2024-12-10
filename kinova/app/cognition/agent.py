@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import torch
+import torch.nn as nn
 import torch.optim as optim
 from scipy import ndimage
 import matplotlib.pyplot as plt
@@ -34,13 +35,15 @@ class AgentPPO:
         self.opt_critic = optim.Adam(self.critic.parameters(), lr=critic['lr'])
         
         self.clip = ppo['clip']
-        
+        self.mae_loss = nn.L1Loss()
+
         
     def critic_loss(self, data):
         state, rewards_to_go = data['state'], data['rewards_to_go']
         state = state.permute(0, 3, 1, 2)
         #print('\n', state.shape, '\n')
         v_loss = ((self.critic(state).squeeze() - rewards_to_go)**2).mean()
+        #v_loss = self.mae_loss(self.critic(state).squeeze(), rewards_to_go)
 
         return v_loss
     

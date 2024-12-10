@@ -43,7 +43,7 @@ URL = "rtsp://192.168.1.10/color"
 # Exp. Configuration
 STEP = 16
 EPISODE = 20
-DISTURB = 0.25
+DISTURB = 0.1
 # Agent Configuration
 CONFIG = {}
 CONFIG['buffer'] = {'name':RolloutBuffer,
@@ -303,7 +303,6 @@ def main():
         trunc = STEP
 
         for ep in range(EPISODE):
-
             step = 0
             R = 0
             done = False
