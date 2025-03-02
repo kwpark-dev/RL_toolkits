@@ -11,7 +11,7 @@ I want to figure out answers to the following questions such that
 Here, 'perception' indicates weights in the global average pooling (GAP) layer of an actor and a critic. Or, it can be indirectly checked via tracking behaviors. In general, deep RL in a continuous environment demands a large amount of iterations (~ 1M) due to credit assignment. At least, the agent should notice capturing and keeping the camera on the target is valuable.
 
 ## Experiments
-Setup, reward signal design, hyperparameters, and results are well explained in the report. Please find it in the journal dir.
+Setup, reward signal design, hyperparameters, and results are well explained in the report. Please find it in the report.
 
 
 ## Conclusion
